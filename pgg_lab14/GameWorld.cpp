@@ -11,6 +11,7 @@
 
 GameWorld::GameWorld()
 {
+	// TODO: I don't understand why this has been put here. In the initialiser? 
 	if (controllerisnotset)
 	{
 		// Create new instances of these classes
@@ -26,6 +27,7 @@ GameWorld::GameWorld()
 	renderer = nullptr;
 	glContext = NULL;
 
+	// Create the camera
 	camera = new Camera();
 
 	// The game is looping
@@ -38,14 +40,16 @@ GameWorld::GameWorld()
 
 GameWorld::~GameWorld()
 {
+	// TODO: There is certainly more pointers to delete. Maybe use some smart pointers to remove the need for this though.
 	// Delete Pointers!
+	// GameObjects
 	delete playerRocket;
 	delete enemyPaddle;
-	
+	delete Terrain;
+
+	// Componants 
 	delete xboxController;
 	delete camera;
-	delete playerRocket;
-	delete Terrain;
 	
 	// Destroy SDL Specific Stuff
 	SDL_DestroyRenderer(renderer);
@@ -94,6 +98,7 @@ void GameWorld::initialiseSDL()
 
 bool GameWorld::initialiseOpenGL()
 {
+	// TODO: Investigate why glewExperimental is used.
 	glewExperimental = GL_TRUE;
 	GLenum err = glewInit();
 
@@ -104,6 +109,7 @@ bool GameWorld::initialiseOpenGL()
 		return false;
 	}
 
+	// Print out GLEW and OpenGL details into the console
 	std::cout << "INFO: Using GLEW " << glewGetString(GLEW_VERSION) << std::endl;
 	std::cout << "INFO: OpenGL Vendor: " << glGetString(GL_VENDOR) << std::endl;
 	std::cout << "INFO: OpenGL Renderer: " << glGetString(GL_RENDERER) << std::endl;
@@ -123,8 +129,6 @@ void GameWorld::initialiseScene()
 	Ball = new GameModel("ball.obj");
 	Terrain = new GameModel("Pong Level.obj");
 
-	//number1 = new GameModel("Numbers/1.obj");
-
 	// Position Terrain
 	Terrain->SetPosition(0, 0 ,-25);
 
@@ -132,17 +136,21 @@ void GameWorld::initialiseScene()
 	playerRocket->SetPosition(0, 0, 0);
 	playerRocket->SetRotation(0, 0, 0);
 
+	// Enemy position is on the other side of the map
 	enemyPaddle->SetPosition(0, 0, -40);
 
+	// Ball is in the middle of the map
 	Ball->SetPosition(0, 0, -20);
 }
 
 void GameWorld::render2DImages(SDL_Texture* Image, SDL_Rect Location, bool Update)
 {
-	// Tell it wherer to render
+	// Tell it where to render
 	SDL_QueryTexture(Image, NULL, NULL, &Location.w, &Location.h);
 	SDL_RenderCopy(renderer, Image, NULL, &Location);
 
+	// Needs to be updated by the last image in the frame sequence.
+	// TODO: Do this automatically. This isn't necessary since I could do this in my own draw call...
 	if (Update)
 	{
 		// Get Renderer
@@ -155,6 +163,8 @@ void GameWorld::render2DImages(SDL_Texture* Image, SDL_Rect Location, bool Updat
 
 SDL_Texture* GameWorld::createImage(std::string filename)
 {
+	// Create a temp texture.
+	// TODO: WHY IS THIS NOT BEING DELETED
 	SDL_Texture* temp = nullptr;
 	
 	// Set the file to the surface
@@ -181,6 +191,8 @@ SDL_Texture* GameWorld::createImage(std::string filename)
 
 void GameWorld::keyInputHandler()
 {
+	// This is less important since this is a controller based game only.
+	// Unless "Rumble Keyboards" become a thing in the future. 
 	switch (incomingEvent.type)
 	{
 	case SDL_QUIT:
@@ -220,22 +232,28 @@ void GameWorld::updateObjects()
 	lastTime = current;
 
 	// Send the Velocity to the Rocket!
-	Ball->updateBall(ballDirectionX, ballDirectionY, enemyPaddle->GetModelPosition(), playerRocket->GetModelPosition(), scoreRight, scoreLeft);
+	Ball->updateBall(ballDirectionX, ballDirectionY, enemyPaddle->GetModelPosition(), 
+					 playerRocket->GetModelPosition(), scoreRight, scoreLeft);
 
+	// Set lose every frame to see if the player has lost pong?
+	// TODO: This does work and the logic is there however all these checks are a little much.
 	Lose = Ball->resetBall();
 
+	// When you have lost then increment the score (One way because the AI is impossible to beat.)
 	if (Lose)
 	{
 		score++;
 		Lose = false;
 	}
 
+	// When the player has lost 3 goals then stop the game playing (With 'go = false' taking them out the game)
 	if (score == 2)
 	{
 		go = false;
 		scoreReset = true;
 	}
 
+	// Match the position of the enemy paddle to where the ball is
 	enemyPaddle->enemyVsBall(Ball->GetModelPosition());
 
 	// Set the camera to follow the Rocket
@@ -257,29 +275,33 @@ void GameWorld::drawObjects()
 	playerRocket->Draw(camera->getView(), camera->getProjection());
 	enemyPaddle->Draw(camera->getView(), camera->getProjection());
 
+	// If up. The ball is drawn
 	if (xboxController->isUpPressed())
 	{
 		isDraw = true;
 	}
 
+	// If down. The ball is not drawn
 	if (xboxController->isDownPressed())
 	{
 		isDraw = false;
 	}
 
+	// If start. Go to the survey screen
 	if (xboxController->isStartPressed())
 	{
 		go = false;
 		scoreReset = true;
 	}
 
+	// if we are drawing the ball, draw it! 
 	if (isDraw)
 	{
 		Ball->Draw(camera->getView(), camera->getProjection());
 	}
 	
+	// The map bounds need to be drawn
 	Terrain->Draw(camera->getView(), camera->getProjection());
-	//number1->Draw(camera->getView(), camera->getProjection());
 
 	// Double Buffering Stuff Yes!
 	SDL_GL_SwapWindow(window);
@@ -293,19 +315,26 @@ void GameWorld::drawObjects()
 
 bool GameWorld::updateGame(uint8_t Score)
 {
-	if (scoreReset == true)
+	// Reset the score at the start of the frame if necessary 
+	if (scoreReset)
 	{
 		score = Score;
 		go = true;
 	}
 	// While the game loop is going
-	while (go == true)
+	while (go)
 	{
 		// Use Xbox Input if availible
 		if (xboxControllerConnected)
 		{
+			// Move the paddle based on the ball position
 			playerRocket->MovePaddle(xboxController->movement(deltaTime));
+
+			//  Set the vibration based on the postion of the ball 
 			currentVibrationValue = Ball->getDistanceBalltoPlayer(playerRocket->GetModelPosition());
+
+			// is the ball.... left? 
+			// TODO: What? 
 			leftSide = Ball->isLeft(playerRocket->GetModelPosition());
 
 			if (leftSide == 'L')
@@ -328,10 +357,8 @@ bool GameWorld::updateGame(uint8_t Score)
 				case SDL_QUIT:
 					go = false;
 					break;
-					// When Key is pressed
 				}
 			}
-			// Get Movement amount from controller
 		}
 		else
 		{
